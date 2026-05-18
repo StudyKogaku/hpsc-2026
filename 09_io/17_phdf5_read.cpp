@@ -21,13 +21,17 @@ int main (int argc, char** argv) {
   hsize_t N[ndim];
   H5Sget_simple_extent_dims(globalspace, N, NULL);
   hsize_t NX = N[0], NY = N[1];
+  assert(NX % dim[0] == 0);
+  assert(NY % dim[1] == 0);
   hsize_t Nlocal[2] = {NX/dim[0], NY/dim[1]};
-  hsize_t offset[2] = {mpirank / dim[0], mpirank % dim[0]};
-  for(int i=0; i<2; i++) offset[i] *= Nlocal[i];
-  hsize_t count[2] = {1,1};
-  hsize_t stride[2] = {1,1};
+  hsize_t count[2] = {2, 2};
+  assert(Nlocal[0] % count[0] == 0);
+  assert(Nlocal[1] % count[1] == 0);
+  hsize_t block[2] = {Nlocal[0]/count[0], Nlocal[1]/count[1]};
+  hsize_t stride[2] = {block[0]*dim[0], block[1]*dim[1]};
+  hsize_t offset[2] = {(mpirank / dim[1])*block[0], (mpirank % dim[1])*block[1]};
   hid_t localspace = H5Screate_simple(2, Nlocal, NULL);
-  H5Sselect_hyperslab(globalspace, H5S_SELECT_SET, offset, stride, count, Nlocal);
+  H5Sselect_hyperslab(globalspace, H5S_SELECT_SET, offset, stride, count, block);
   H5Pclose(plist);
   vector<int> buffer(Nlocal[0]*Nlocal[1]);
   plist = H5Pcreate(H5P_DATASET_XFER);
@@ -45,6 +49,7 @@ int main (int argc, char** argv) {
   for (int i=0; i<Nlocal[0]*Nlocal[1]; i++)
     sum += buffer[i];
   printf("sum=%d\n",sum);
-  printf("N=%d: %lf s (%lf GB/s)\n",NX*NY,time,4*NX*NY/time/1e9);
+  printf("N=%llu: %lf s (%lf GB/s)\n",
+         static_cast<unsigned long long>(NX*NY), time, 4*NX*NY/time/1e9);
   MPI_Finalize();
 }
